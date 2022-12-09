@@ -9,6 +9,7 @@ class AlarmResource(resource.Resource):
     def __init__(self):
         super().__init__()
         self.state = "OFF"
+        print("Server started")
 
     async def render_put(self, request):
         self.state = request.payload
