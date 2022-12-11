@@ -1,13 +1,11 @@
 import asyncio
 import ipaddress
-
+import random
+import string
 import aiocoap
-from aiocoap import *
 from aiocoap import resource
-
 from server import AlarmResource
 import netifaces
-import subprocess
 from ot_manager import OtManager
 
 def main():
@@ -20,30 +18,18 @@ def main():
         if i['addr'].startswith('fd'):
             break
     otM = OtManager(ipaddress.ip_address(addrs[netifaces.AF_INET6][ctr]['addr']))
-    otM.findChildIps()
-    ips = otM.getChildIps()
+    otM.find_child_ips()
 
-    asyncio.get_event_loop().run_until_complete(client(otM))
+
+
     root = resource.Site()
-    root.add_resource(['radar'], AlarmResource())
+    for ip in otM.get_child_ips():
+        root.add_resource((otM.get_child_ips()[ip],), AlarmResource())
+
     asyncio.Task(aiocoap.Context.create_server_context(root, bind=(addrs[netifaces.AF_INET6][ctr]['addr'], 5683)))
     print("Server running")
+    asyncio.get_event_loop().run_until_complete(otM.inform_children())
     asyncio.get_event_loop().run_forever()
-
-
-async def client(otm: OtManager):
-    context = await Context.create_client_context()
-    payload = b"000000"
-    while True:
-        ip = otm.dequePendChildIps()
-        if ip != ipaddress.IPv6Address("::"):
-            print("Sent to %s" % ip)
-            request = Message(code=GET, payload=payload, uri="coap://[" + str(ip) + "]/permissions")
-        else:
-            break
-
-        response = await context.request(request).response
-        print('Result: %x\n%r' % (response.code, response.payload))
 
 
 
