@@ -2,6 +2,8 @@ import asyncio
 import ipaddress
 import random
 import string
+from time import sleep
+
 import aiocoap
 from aiocoap import resource
 from server import RadarResource
@@ -28,10 +30,16 @@ def main():
 
     asyncio.Task(aiocoap.Context.create_server_context(root, bind=(addrs[netifaces.AF_INET6][ctr]['addr'], 5683)))
     print("Server running")
-    asyncio.get_event_loop().run_until_complete(otM.inform_children())
-    asyncio.get_event_loop().run_forever()
+    # run main task and otM.inform_children() in parallel
+    asyncio.get_event_loop().run_until_complete(asyncio.gather(main_task(otM), otM.inform_children()))
 
 
+
+async def main_task(otManger: OtManager):
+    while True:
+        print("finding children")
+        otManger.find_child_ips()
+        await asyncio.sleep(5)
 
 if __name__ == "__main__":
     main()

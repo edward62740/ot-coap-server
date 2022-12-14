@@ -21,5 +21,14 @@ class RadarResource(resource.Resource):
         print(self.path)
         self.state = request.payload.decode("utf-8")
         print("Received PUT request from " + client_ip + " with payload " + self.state + " and resource " )
+        if self.state[0] == '1':
+            print("lights on")
+            self.bulb1.turn_on()
+            self.bulb2.turn_on()
+            self.bulb3.turn_on()
 
+        if self.state[0] == '0':
+            self.bulb1.turn_off()
+            self.bulb2.turn_off()
+            self.bulb3.turn_off()
         return aiocoap.Message(code=aiocoap.ACK)
