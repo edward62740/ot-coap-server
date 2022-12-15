@@ -1,6 +1,7 @@
 import aiocoap.resource as resource
 import aiocoap
 import tinytuya
+import logging
 
 class RadarResource(resource.Resource):
     """This resource supports the PUT method.
@@ -10,19 +11,17 @@ class RadarResource(resource.Resource):
     def __init__(self, uri):
         super().__init__()
         self.path = uri
+        logging.info("Registered resource " + str(uri))
         self.state = "OFF"
         self.bulb1.set_version(3.3)
         self.bulb2.set_version(3.3)
         self.bulb3.set_version(3.3)
-        print("Server started")
 
     async def render_put(self, request):
         client_ip = request.remote.hostinfo
-        print(self.path)
         self.state = request.payload.decode("utf-8")
-        print("Received PUT request from " + client_ip + " with payload " + self.state + " and resource " )
+        logging.info("Received PUT request from " + client_ip + " with payload " + self.state + " and resource " )
         if self.state[0] == '1':
-            print("lights on")
             self.bulb1.turn_on()
             self.bulb2.turn_on()
             self.bulb3.turn_on()
