@@ -23,6 +23,7 @@ class OtDevice:
     det_dist: int = field(default=0)
     det_lux: int = field(default=0)
     det_vdd: int = field(default=0)
+    det_rssi: int = field(default=0)
     last_seen: float = field(default=0)
 
 
@@ -74,15 +75,17 @@ class OtManager:
         """ Returns a dict of all children in the sensitivity list """
         return self.child_ip6
 
-    def update_child_info(self, ip: IPv6Address, det_flag: bool, det_conf: int, det_dist: int, det_lux: int, det_vdd:int, last_seen: float):
+    def update_child_info(self, ip: IPv6Address, det_conf: int, det_dist: int, det_lux: int, det_vdd:int, det_rssi:int, last_seen: float, det_flag: bool = None):
         """ Updates the sensitivity list with new information from the child """
         ip = ipaddress.ip_address(ip)
         try:
-            self.child_ip6[ip].det_flag = det_flag
+            if det_flag is not None:
+                self.child_ip6[ip].det_flag = det_flag
             self.child_ip6[ip].det_conf = det_conf
             self.child_ip6[ip].det_dist = det_dist
             self.child_ip6[ip].det_lux = det_lux
             self.child_ip6[ip].det_vdd = det_vdd
+            self.child_ip6[ip].det_rssi = det_rssi
             self.child_ip6[ip].last_seen = last_seen
         except KeyError:
             logging.warning("Child " + str(ip) + " not found in sensitivity list")

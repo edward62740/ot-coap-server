@@ -30,18 +30,18 @@ class RadarResource(resource.Resource):
         csv = self.state.split(",")
         logging.warning(csv)
         try:
-            self.ot_mgr.update_child_info(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)), bool(csv[0]),
-                                          int(csv[1]), int(csv[2]), int(csv[3]), int(csv[4]), time.time())
+            self.ot_mgr.update_child_info(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)),
+                                          int(csv[1]), int(csv[2]), int(csv[3]), int(csv[4]), int(csv[5]), time.time(), False if csv[0] == "0" else True if csv[0] == "1" else None)
         except ValueError:
             logging.warning("Invalid payload")
             pass
         logging.info("Received PUT request from " + client_ip + " with payload " + self.state + " and resource " )
-        if self.state[0] == '1':
+        if csv[0] == "1":
             self.bulb1.turn_on()
             self.bulb2.turn_on()
             self.bulb3.turn_on()
 
-        if self.state[0] == '0':
+        if csv[0] == "0":
             self.bulb1.turn_off()
             self.bulb2.turn_off()
             self.bulb3.turn_off()
