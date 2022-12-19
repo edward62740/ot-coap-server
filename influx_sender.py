@@ -35,8 +35,16 @@ async def influx_task(ot_mgr: OtManager):
                     .field("vdd", ot_mgr.get_child_ips()[ip].det_vdd) \
                     .field("rssi", ot_mgr.get_child_ips()[ip].det_rssi) \
                     .field("alive", alive) \
+                    .field("ctr", ot_mgr.get_child_ips()[ip].ctr) \
                     .time(datetime.utcnow(), WritePrecision.MS)
 
                 # Write the data point to the database
-                logging.info(str(point))
-                await client.write_api().write(bucket, org, point)
+                try:
+                    await client.write_api().write(bucket, org, point)
+                except OSError or TimeoutError:
+                    logging.error("Could not connect to influxdb")
+                    pass
+                except Exception as e:
+                    logging.error("Could not write to influxdb")
+                    logging.error(e)
+                    pass

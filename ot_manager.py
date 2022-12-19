@@ -3,6 +3,7 @@ import random
 import string
 import subprocess
 import asyncio
+import time
 
 from ipaddress import IPv6Address
 
@@ -25,6 +26,8 @@ class OtDevice:
     det_vdd: int = field(default=0)
     det_rssi: int = field(default=0)
     last_seen: float = field(default=0)
+    timeout_cyc: int = field(default=5)
+    ctr: int = field(default=0)
 
 
 class OtManager:
@@ -75,7 +78,7 @@ class OtManager:
         """ Returns a dict of all children in the sensitivity list """
         return self.child_ip6
 
-    def update_child_info(self, ip: IPv6Address, det_conf: int, det_dist: int, det_lux: int, det_vdd:int, det_rssi:int, last_seen: float, det_flag: bool = None):
+    def update_child_info(self, ip: IPv6Address, det_conf: int, det_dist: int, det_lux: int, det_vdd:int, det_rssi:int, last_seen: float, ctr:int, det_flag: bool = None):
         """ Updates the sensitivity list with new information from the child """
         ip = ipaddress.ip_address(ip)
         try:
@@ -87,6 +90,8 @@ class OtManager:
             self.child_ip6[ip].det_vdd = det_vdd
             self.child_ip6[ip].det_rssi = det_rssi
             self.child_ip6[ip].last_seen = last_seen
+            self.child_ip6[ip].timeout_cyc = 5
+            self.child_ip6[ip].ctr = ctr
         except KeyError:
             logging.warning("Child " + str(ip) + " not found in sensitivity list")
             pass
@@ -102,17 +107,26 @@ class OtManager:
 
     def _get_queued_child_ips(self):
         """ Returns a set of child IPs from the notif queue if the set is not empty, if empty returns None """
-        if self._pend_queue_notif_child_ips.__len__() > 0:
-            return self._pend_queue_notif_child_ips
-        else:
-            return None
+        return self._pend_queue_notif_child_ips
 
     async def inform_children(self, interval=15):
         """ Sends a notification to all children in the notif queue """
         while True:
-            if self._get_queued_child_ips() is not None:
+            if self._get_queued_child_ips().__len__() > 0:
                 await asyncio.gather(*[self._inform(ip) for ip in self._get_queued_child_ips()])
-                logging.info("Notified children" + str(self._get_queued_child_ips()))
+                logging.info("Notified children")
+            # inform children if last seen > 15 seconds before now
+            child_ipv6_tmp = self.child_ip6.copy()
+            for ip in child_ipv6_tmp:
+                if self.child_ip6[ip].last_seen + 100 < time.time() and self.child_ip6[ip].last_seen != 0:
+                    self.child_ip6[ip].timeout_cyc -= 1
+                    if self.child_ip6[ip].timeout_cyc == 0:
+                        logging.info("Child " + str(ip) + " timed out")
+                        del self.child_ip6[ip]
+                        continue
+                    await self._inform(ip)
+                    # print how long child was seen ago in seconds
+                    logging.info("Due to inactivity, notified child " + str(ip) + " last seen " + str(time.time() - self.child_ip6[ip].last_seen) + " seconds ago")
             await asyncio.sleep(interval)
 
     async def _inform(self, ip: IPv6Address):
@@ -120,13 +134,16 @@ class OtManager:
         try:
             logging.info("Sending to " + str(ip))
             context = await Context.create_client_context()
-            payload = str.encode(self.child_ip6[ip].uri)
+            try:
+                payload = str.encode(self.child_ip6[ip].uri)
+            except KeyError:
+                logging.warning("Child " + str(ip) + " not found in sensitivity list")
             request = Message(code=GET, payload=payload, uri="coap://[" + str(ip) + "]/permissions")
             response = await context.request(request).response
             logging.info("Client responded with: " + str(response.payload))
             try:
                 self._get_queued_child_ips().remove(ip)
-            except KeyError:
+            except KeyError or AttributeError:
                 logging.warning("Child " + str(ip) + " disappeared suddenly")
                 pass
         except aiocoap.error.ConRetransmitsExceeded:

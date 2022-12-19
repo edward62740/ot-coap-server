@@ -31,11 +31,11 @@ class RadarResource(resource.Resource):
         logging.warning(csv)
         try:
             self.ot_mgr.update_child_info(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)),
-                                          int(csv[1]), int(csv[2]), int(csv[3]), int(csv[4]), int(csv[5]), time.time(), False if csv[0] == "0" else True if csv[0] == "1" else None)
+                                          int(csv[1]), int(csv[2]), int(csv[3]), int(csv[4]), int(csv[5]), time.time(), int(csv[6]), False if csv[0] == "0" else True if csv[0] == "1" else None)
         except ValueError:
             logging.warning("Invalid payload")
             pass
-        logging.info("Received PUT request from " + client_ip + " with payload " + self.state + " and resource " )
+        logging.info("Received PUT request from " + client_ip + " with payload " + self.state)
         if csv[0] == "1":
             self.bulb1.turn_on()
             self.bulb2.turn_on()
