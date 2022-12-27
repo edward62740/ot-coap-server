@@ -1,17 +1,19 @@
 import ipaddress
 import time
 import re
-
-import aiocoap.resource as resource
+import logging
+from aiocoap import resource
 import aiocoap
 import tinytuya
-import logging
+
 from ot_manager import OtManager
 
 class RadarResource(resource.Resource):
     """This resource supports the PUT method.
     PUT: Update state of alarm."""
-
+    bulb1 = tinytuya.BulbDevice('', '', '')
+    bulb2 = tinytuya.BulbDevice('', '', '')
+    bulb3 = tinytuya.BulbDevice('', '', '')
 
     def __init__(self, uri, ot_mgr: OtManager):
         super().__init__()
@@ -31,10 +33,12 @@ class RadarResource(resource.Resource):
         logging.warning(csv)
         try:
             self.ot_mgr.update_child_info(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)),
-                                          int(csv[1]), int(csv[2]), int(csv[3]), int(csv[4]), int(csv[5]), time.time(), int(csv[6]), False if csv[0] == "0" else True if csv[0] == "1" else None)
+                                          int(csv[1]), int(csv[2]), int(csv[3]), int(csv[4]), int(csv[5]),
+                                          time.time(), int(csv[6]),
+                                          False if csv[0] == "0" else True if csv[0] == "1" else None)
         except ValueError:
             logging.warning("Invalid payload")
-            pass
+
         logging.info("Received PUT request from " + client_ip + " with payload " + self.state)
         if csv[0] == "1":
             self.bulb1.turn_on(nowait=True)

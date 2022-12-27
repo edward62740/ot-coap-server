@@ -8,16 +8,16 @@ import time
 from ipaddress import IPv6Address
 
 from dataclasses import dataclass, field
-
+import logging
 import aiocoap
 from aiocoap import *
-from aiocoap import error
 
-import logging
+
 
 
 @dataclass
 class OtDevice:
+    """ Class to store information about a device. """
     uri: str = field(default="")
     det_flag: bool = field(default=False)
     det_conf: int = field(default=0)
@@ -64,9 +64,9 @@ class OtManager:
                         if tmp not in self.child_ip6:
                             self.pend_queue_res_child_ips.add(tmp)
                             logging.info(line[6:].strip()  + " added to child notif queue")
-                            x = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-                            self.child_ip6[tmp] = OtDevice(uri=x)
-                            logging.info(line[6:].strip()  + " updated in child sensitivity list with resource " + x)
+                            tmp_uri = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+                            self.child_ip6[tmp] = OtDevice(uri=tmp_uri)
+                            logging.info(line[6:].strip()  + " updated in child sensitivity list with resource " + tmp_uri)
                 except ValueError:
                     pass
 
@@ -94,7 +94,6 @@ class OtManager:
             self.child_ip6[ip].ctr = ctr
         except KeyError:
             logging.warning("Child " + str(ip) + " not found in sensitivity list")
-            pass
 
     def dequeue_child_ip(self):
         """ Returns a child IP from the res queue and removes it from the queue, if empty returns None """
@@ -112,7 +111,7 @@ class OtManager:
     async def inform_children(self, interval=15):
         """ Sends a notification to all children in the notif queue """
         while True:
-            if self._get_queued_child_ips().__len__() > 0:
+            if len(self._get_queued_child_ips()) > 0:
                 await asyncio.gather(*[self._inform(ip) for ip in self._get_queued_child_ips()])
                 logging.info("Notified children")
             # inform children if last seen > 15 seconds before now
@@ -143,9 +142,9 @@ class OtManager:
             logging.info("Client responded with: " + str(response.payload))
             try:
                 self._get_queued_child_ips().remove(ip)
-            except KeyError or AttributeError:
+            except (KeyError, AttributeError):
                 logging.warning("Child " + str(ip) + " disappeared suddenly")
-                pass
+
         except aiocoap.error.ConRetransmitsExceeded:
             logging.warning("Child " + str(ip) + " not reachable")
-            pass
+
