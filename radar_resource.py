@@ -37,12 +37,12 @@ class RadarResource(resource.Resource):
             pass
         logging.info("Received PUT request from " + client_ip + " with payload " + self.state)
         if csv[0] == "1":
-            self.bulb1.turn_on()
-            self.bulb2.turn_on()
-            self.bulb3.turn_on()
+            self.bulb1.turn_on(nowait=True)
+            self.bulb2.turn_on(nowait=True)
+            self.bulb3.turn_on(nowait=True)
 
         if csv[0] == "0":
-            self.bulb1.turn_off()
-            self.bulb2.turn_off()
-            self.bulb3.turn_off()
+            self.bulb1.turn_off(nowait=True)
+            self.bulb2.turn_off(nowait=True)
+            self.bulb3.turn_off(nowait=True)
         return aiocoap.Message(code=aiocoap.ACK)

@@ -12,7 +12,7 @@ import logging
 
 async def influx_task(ot_mgr: OtManager):
     """ Task to periodically send data to influxdb. """
-    bucket = ""
+    bucket = "ipr"
     org = ""
     token = ""
     # Store the URL of your InfluxDB instance
