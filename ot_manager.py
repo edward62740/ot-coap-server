@@ -1,3 +1,4 @@
+import enum
 import ipaddress
 import random
 import string
@@ -12,22 +13,35 @@ import logging
 import aiocoap
 from aiocoap import *
 
-
-
+OT_DEVICE_TIMEOUT_CYCLES = 5
+class OtDeviceType(enum.IntEnum):
+    RADAR = 0
+    HS = 1
+    UNKNOWN = -255
 
 @dataclass
 class OtDevice:
-    """ Class to store information about a device. """
+    """ Generic class for an OpenThread device. """
+    device_type: OtDeviceType = field(default=OtDeviceType.UNKNOWN)
+    eui64: int = field(default=0)
     uri: str = field(default="")
-    det_flag: bool = field(default=False)
-    det_conf: int = field(default=0)
-    det_dist: int = field(default=0)
-    det_lux: int = field(default=0)
-    det_vdd: int = field(default=0)
-    det_rssi: int = field(default=0)
     last_seen: float = field(default=0)
-    timeout_cyc: int = field(default=5)
+    timeout_cyc: int = field(default=OT_DEVICE_TIMEOUT_CYCLES)
     ctr: int = field(default=0)
+
+@dataclass
+class OtRadar(OtDevice):
+    """ Class to store information about a radar device. """
+    radar_flag: bool = field(default=False)
+    radar_conf: int = field(default=0)
+    radar_dist: int = field(default=0)
+    opt_lux: int = field(default=0)
+    vdd: int = field(default=0)
+    rssi: int = field(default=0)
+
+@dataclass
+class OtHs(OtDevice):
+    pass # NOT IMPLEMENTED YET
 
 
 class OtManager:
@@ -69,7 +83,6 @@ class OtManager:
                             logging.info(line[6:].strip()  + " updated in child sensitivity list with resource " + tmp_uri)
                 except ValueError:
                     pass
-
             last = str(process.poll())
             if last is not None:
                 break
@@ -78,22 +91,37 @@ class OtManager:
         """ Returns a dict of all children in the sensitivity list """
         return self.child_ip6
 
-    def update_child_info(self, ip: IPv6Address, det_conf: int, det_dist: int, det_lux: int, det_vdd:int, det_rssi:int, last_seen: float, ctr:int, det_flag: bool = None):
+    def update_child_info(self, ip: IPv6Address, ls: float):
         """ Updates the sensitivity list with new information from the child """
-        ip = ipaddress.ip_address(ip)
         try:
-            if det_flag is not None:
-                self.child_ip6[ip].det_flag = det_flag
-            self.child_ip6[ip].det_conf = det_conf
-            self.child_ip6[ip].det_dist = det_dist
-            self.child_ip6[ip].det_lux = det_lux
-            self.child_ip6[ip].det_vdd = det_vdd
-            self.child_ip6[ip].det_rssi = det_rssi
-            self.child_ip6[ip].last_seen = last_seen
-            self.child_ip6[ip].timeout_cyc = 5
-            self.child_ip6[ip].ctr = ctr
+            self.child_ip6[ip].last_seen = ls
+            self.child_ip6[ip].timeout_cyc = OT_DEVICE_TIMEOUT_CYCLES
+
         except KeyError:
             logging.warning("Child " + str(ip) + " not found in sensitivity list")
+            raise ValueError
+
+    def update_radar(self, ip: IPv6Address, csv: list):
+        """ Updates the radar sensitivity list with new information from the child """
+        try:
+            flag = False if csv[2] == "0" else True if csv[2] == "1" else None
+            if not isinstance(self.child_ip6[ip], OtRadar):
+                self.child_ip6[ip] = OtRadar(device_type=OtDeviceType.RADAR, eui64=csv[1], radar_flag=flag, radar_conf=csv[3],
+                                             radar_dist=csv[4],opt_lux=csv[5], vdd=csv[6], rssi=csv[7])
+            else:
+                if flag is not None:
+                    self.child_ip6[ip].radar_flag = flag
+                self.child_ip6[ip].radar_conf = csv[3]
+                self.child_ip6[ip].radar_dist = csv[4]
+                self.child_ip6[ip].opt_lux = csv[5]
+                self.child_ip6[ip].vdd = csv[6]
+                self.child_ip6[ip].rssi = csv[7]
+                self.child_ip6[ip].ctr = csv[8]
+            self.update_child_info(ip, time.time())
+
+        except KeyError:
+            logging.warning("Child " + str(ip) + " not found in sensitivity list")
+            raise ValueError
 
     def dequeue_child_ip(self):
         """ Returns a child IP from the res queue and removes it from the queue, if empty returns None """

@@ -1,0 +1,16 @@
+[Unit]
+Description=ipr
+After=network.target network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+Restart=always
+RestartSec=15
+ExecStartPre=/bin/mkdir -p /var/run/ipr
+PIDFile=/var/run/ipr/service.pid
+ExecStart=/usr/bin/python3 /ipr/main.py
+
+[Install]
+WantedBy=multi-user.target
