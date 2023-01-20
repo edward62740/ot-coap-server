@@ -1,5 +1,7 @@
 import logging
 from ipaddress import IPv6Address
+
+
 from ot_manager import OtDeviceType
 
 
@@ -9,5 +11,7 @@ def user_handler_init():
     # Add your code here
 
 
-
-def user_handler_callback(addr: IPv6Address, payload: str):
+def user_handler_callback(src: IPv6Address, payload: str):
+    """ This function is called when resource_handler receives something """
+    logging.info("User handler callback called")
+    # application-specific trigger functions

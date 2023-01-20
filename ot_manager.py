@@ -14,6 +14,10 @@ import aiocoap
 from aiocoap import *
 
 OT_DEVICE_TIMEOUT_CYCLES = 5
+OT_DEVICE_CHILD_TIMEOUT_S = 190
+OT_DEVICE_CHILD_TIMEOUT_CYCLE_RATE = 1
+OT_DEVICE_POLL_INTERVAL_S = 15
+
 class OtDeviceType(enum.IntEnum):
     RADAR = 0
     HS = 1
@@ -136,23 +140,23 @@ class OtManager:
         """ Returns a set of child IPs from the notif queue if the set is not empty, if empty returns None """
         return self._pend_queue_notif_child_ips
 
-    async def inform_children(self, interval=15):
+    async def inform_children(self, interval=OT_DEVICE_POLL_INTERVAL_S):
         """ Sends a notification to all children in the notif queue """
         while True:
             if len(self._get_queued_child_ips()) > 0:
                 await asyncio.gather(*[self._inform(ip) for ip in self._get_queued_child_ips()])
                 logging.info("Notified children")
-            # inform children if last seen > 15 seconds before now
+            # inform children if last seen > 100 seconds before now
             child_ipv6_tmp = self.child_ip6.copy()
             for ip in child_ipv6_tmp:
-                if self.child_ip6[ip].last_seen + 100 < time.time() and self.child_ip6[ip].last_seen != 0:
-                    self.child_ip6[ip].timeout_cyc -= 1
+                if self.child_ip6[ip].last_seen + OT_DEVICE_CHILD_TIMEOUT_S < time.time() and self.child_ip6[ip].last_seen != 0:
+                    self.child_ip6[ip].timeout_cyc -= OT_DEVICE_CHILD_TIMEOUT_CYCLE_RATE
                     if self.child_ip6[ip].timeout_cyc == 0:
                         logging.info("Child " + str(ip) + " timed out")
                         del self.child_ip6[ip]
                         continue
                     await self._inform(ip)
-                    # print how long child was seen ago in seconds
+                    # log how long child was seen ago in seconds
                     logging.info("Due to inactivity, notified child " + str(ip) + " last seen " + str(time.time() - self.child_ip6[ip].last_seen) + " seconds ago")
             await asyncio.sleep(interval)
 

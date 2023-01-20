@@ -5,14 +5,18 @@ import aiocoap
 from aiocoap import resource
 import netifaces
 import coloredlogs
+
 import influx_sender
 from ot_manager import OtManager
 from resource_handler import ResourceHandler
 from user_handler import user_handler_init
 
+START_TASK_INFLUX_SENDER = True
+
 COAP_UDP_DEFAULT_PORT = 5683
 OT_DEFAULT_PREFIX = "fd"
 OT_DEFAULT_IFACE = "wpan0"
+
 POLL_NEW_CHILDREN_INTERVAL_S = 30
 
 
@@ -42,7 +46,8 @@ def main(root_res: resource.Site):
     )
     asyncio.get_event_loop().run_until_complete(
         asyncio.gather(
-            main_task(ot_mgr, root_res), ot_mgr.inform_children(), influx_sender.influx_task(ot_mgr)
+            main_task(ot_mgr, root_res), ot_mgr.inform_children(),
+            influx_sender.influx_task(ot_mgr) if START_TASK_INFLUX_SENDER else None
         )
     )
 
@@ -52,8 +57,6 @@ async def main_task(ot_manager: OtManager, root_res: resource.Site):
     while True:
         logging.info("Finding new children...")
         ot_manager.find_child_ips()
-        # TODO: Render request raised a renderable error (NotFound()),
-        # responding accordingly.
         ip = ot_manager.dequeue_child_ip()
         if ip is not None:
             try:

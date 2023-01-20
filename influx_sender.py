@@ -6,7 +6,6 @@ from influxdb_client.client.influxdb_client_async import InfluxDBClientAsync
 
 from ot_manager import OtManager, OtDeviceType
 
-
 async def influx_task(ot_mgr: OtManager):
     """Task to periodically send data to influxdb."""
     bucket = ""
