@@ -1,3 +1,4 @@
+import enum
 import ipaddress
 import random
 import string
@@ -12,22 +13,39 @@ import logging
 import aiocoap
 from aiocoap import *
 
+OT_DEVICE_TIMEOUT_CYCLES = 5
+OT_DEVICE_CHILD_TIMEOUT_S = 190
+OT_DEVICE_CHILD_TIMEOUT_CYCLE_RATE = 1
+OT_DEVICE_POLL_INTERVAL_S = 15
 
-
+class OtDeviceType(enum.IntEnum):
+    RADAR = 0
+    HS = 1
+    UNKNOWN = -255
 
 @dataclass
 class OtDevice:
-    """ Class to store information about a device. """
+    """ Generic class for an OpenThread device. """
+    device_type: OtDeviceType = field(default=OtDeviceType.UNKNOWN)
+    eui64: int = field(default=0)
     uri: str = field(default="")
-    det_flag: bool = field(default=False)
-    det_conf: int = field(default=0)
-    det_dist: int = field(default=0)
-    det_lux: int = field(default=0)
-    det_vdd: int = field(default=0)
-    det_rssi: int = field(default=0)
     last_seen: float = field(default=0)
-    timeout_cyc: int = field(default=5)
+    timeout_cyc: int = field(default=OT_DEVICE_TIMEOUT_CYCLES)
     ctr: int = field(default=0)
+
+@dataclass
+class OtRadar(OtDevice):
+    """ Class to store information about a radar device. """
+    radar_flag: bool = field(default=False)
+    radar_conf: int = field(default=0)
+    radar_dist: int = field(default=0)
+    opt_lux: int = field(default=0)
+    vdd: int = field(default=0)
+    rssi: int = field(default=0)
+
+@dataclass
+class OtHs(OtDevice):
+    pass # NOT IMPLEMENTED YET
 
 
 class OtManager:
@@ -69,7 +87,6 @@ class OtManager:
                             logging.info(line[6:].strip()  + " updated in child sensitivity list with resource " + tmp_uri)
                 except ValueError:
                     pass
-
             last = str(process.poll())
             if last is not None:
                 break
@@ -78,22 +95,37 @@ class OtManager:
         """ Returns a dict of all children in the sensitivity list """
         return self.child_ip6
 
-    def update_child_info(self, ip: IPv6Address, det_conf: int, det_dist: int, det_lux: int, det_vdd:int, det_rssi:int, last_seen: float, ctr:int, det_flag: bool = None):
+    def update_child_info(self, ip: IPv6Address, ls: float):
         """ Updates the sensitivity list with new information from the child """
-        ip = ipaddress.ip_address(ip)
         try:
-            if det_flag is not None:
-                self.child_ip6[ip].det_flag = det_flag
-            self.child_ip6[ip].det_conf = det_conf
-            self.child_ip6[ip].det_dist = det_dist
-            self.child_ip6[ip].det_lux = det_lux
-            self.child_ip6[ip].det_vdd = det_vdd
-            self.child_ip6[ip].det_rssi = det_rssi
-            self.child_ip6[ip].last_seen = last_seen
-            self.child_ip6[ip].timeout_cyc = 5
-            self.child_ip6[ip].ctr = ctr
+            self.child_ip6[ip].last_seen = ls
+            self.child_ip6[ip].timeout_cyc = OT_DEVICE_TIMEOUT_CYCLES
+
         except KeyError:
             logging.warning("Child " + str(ip) + " not found in sensitivity list")
+            raise ValueError
+
+    def update_radar(self, ip: IPv6Address, csv: list):
+        """ Updates the radar sensitivity list with new information from the child """
+        try:
+            flag = False if csv[2] == "0" else True if csv[2] == "1" else None
+            if not isinstance(self.child_ip6[ip], OtRadar):
+                self.child_ip6[ip] = OtRadar(device_type=OtDeviceType.RADAR, eui64=csv[1], radar_flag=flag, radar_conf=csv[3],
+                                             radar_dist=csv[4],opt_lux=csv[5], vdd=csv[6], rssi=csv[7])
+            else:
+                if flag is not None:
+                    self.child_ip6[ip].radar_flag = flag
+                self.child_ip6[ip].radar_conf = csv[3]
+                self.child_ip6[ip].radar_dist = csv[4]
+                self.child_ip6[ip].opt_lux = csv[5]
+                self.child_ip6[ip].vdd = csv[6]
+                self.child_ip6[ip].rssi = csv[7]
+                self.child_ip6[ip].ctr = csv[8]
+            self.update_child_info(ip, time.time())
+
+        except KeyError:
+            logging.warning("Child " + str(ip) + " not found in sensitivity list")
+            raise ValueError
 
     def dequeue_child_ip(self):
         """ Returns a child IP from the res queue and removes it from the queue, if empty returns None """
@@ -108,23 +140,23 @@ class OtManager:
         """ Returns a set of child IPs from the notif queue if the set is not empty, if empty returns None """
         return self._pend_queue_notif_child_ips
 
-    async def inform_children(self, interval=15):
+    async def inform_children(self, interval=OT_DEVICE_POLL_INTERVAL_S):
         """ Sends a notification to all children in the notif queue """
         while True:
             if len(self._get_queued_child_ips()) > 0:
                 await asyncio.gather(*[self._inform(ip) for ip in self._get_queued_child_ips()])
                 logging.info("Notified children")
-            # inform children if last seen > 15 seconds before now
+            # inform children if last seen > 100 seconds before now
             child_ipv6_tmp = self.child_ip6.copy()
             for ip in child_ipv6_tmp:
-                if self.child_ip6[ip].last_seen + 100 < time.time() and self.child_ip6[ip].last_seen != 0:
-                    self.child_ip6[ip].timeout_cyc -= 1
+                if self.child_ip6[ip].last_seen + OT_DEVICE_CHILD_TIMEOUT_S < time.time() and self.child_ip6[ip].last_seen != 0:
+                    self.child_ip6[ip].timeout_cyc -= OT_DEVICE_CHILD_TIMEOUT_CYCLE_RATE
                     if self.child_ip6[ip].timeout_cyc == 0:
                         logging.info("Child " + str(ip) + " timed out")
                         del self.child_ip6[ip]
                         continue
                     await self._inform(ip)
-                    # print how long child was seen ago in seconds
+                    # log how long child was seen ago in seconds
                     logging.info("Due to inactivity, notified child " + str(ip) + " last seen " + str(time.time() - self.child_ip6[ip].last_seen) + " seconds ago")
             await asyncio.sleep(interval)
 
