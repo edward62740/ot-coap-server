@@ -3,6 +3,7 @@ import ipaddress
 import logging
 import aiocoap
 from aiocoap import resource
+import aiocoap.numbers.constants
 import netifaces
 import coloredlogs
 
@@ -14,22 +15,23 @@ from user_handler import user_handler_init
 START_TASK_INFLUX_SENDER = True
 
 COAP_UDP_DEFAULT_PORT = 5683
-OT_DEFAULT_PREFIX = "fd"
+OT_DEFAULT_PREFIX = "fd74"
 OT_DEFAULT_IFACE = "wpan0"
 
 POLL_NEW_CHILDREN_INTERVAL_S = 30
 
-
 def main(root_res: resource.Site):
     """Main function that starts the server"""
     # Resource tree creation
+    aiocoap.numbers.constants.ACK_TIMEOUT = 7.0
     addrs = netifaces.ifaddresses(OT_DEFAULT_IFACE)
     ctr = 0
     for i in addrs[netifaces.AF_INET6]:
-        ctr += 1
         if i["addr"].startswith(OT_DEFAULT_PREFIX):  # ensure binding to mesh-local address
             break
-    ot_mgr = OtManager(ipaddress.ip_address(addrs[netifaces.AF_INET6][ctr]["addr"]))
+        ctr += 1
+
+    ot_mgr = OtManager(ipaddress.ip_address(addrs[netifaces.AF_INET6][ctr]["addr"]), 1)
     ot_mgr.find_child_ips()
 
     while (ip := ot_mgr.dequeue_child_ip()) is not None:
@@ -58,7 +60,7 @@ async def main_task(ot_manager: OtManager, root_res: resource.Site):
         logging.info("Finding new children...")
         ot_manager.find_child_ips()
         ip = ot_manager.dequeue_child_ip()
-        if ip is not None:
+        while ip is not None:
             try:
                 root_res.add_resource(
                     (ot_manager.get_child_ips()[ip].uri,),
@@ -68,7 +70,9 @@ async def main_task(ot_manager: OtManager, root_res: resource.Site):
                     "Added new child " + str(ip) + " with resource " + ot_manager.get_child_ips()[ip].uri
                 )
             except KeyError:
+                logging.info("Child " + str(ip) + " error")
                 pass
+            ip = ot_manager.dequeue_child_ip()
         await asyncio.sleep(POLL_NEW_CHILDREN_INTERVAL_S)
 
 

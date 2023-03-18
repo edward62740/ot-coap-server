@@ -6,6 +6,7 @@ from influxdb_client.client.influxdb_client_async import InfluxDBClientAsync
 
 from ot_manager import OtManager, OtDeviceType
 
+
 async def influx_task(ot_mgr: OtManager):
     """Task to periodically send data to influxdb."""
     bucket = ""
@@ -35,6 +36,27 @@ async def influx_task(ot_mgr: OtManager):
                         .field("rssi", int(ot_mgr.get_child_ips()[ip].rssi))
                         .field("alive", bool(alive))
                         .field("alive_ctr", int(ot_mgr.get_child_ips()[ip].ctr))
+                        .time(datetime.utcnow(), WritePrecision.MS)
+                    )
+                    # Write the data point to the database
+                    try:
+                        await client.write_api().write(bucket, org, point)
+                    except (OSError, TimeoutError):
+                        logging.error("Could not connect to influxdb")
+                    except Exception as err:
+                        logging.error("Could not write to influxdb")
+                        logging.error(err)
+                elif ot_mgr.get_child_ips()[ip].device_type == OtDeviceType.HS:
+                    point = (
+                        Point("ot-hs")
+                        .tag("ip", ip)
+                        .field("temp_main", float(ot_mgr.get_child_ips()[ip].temp_main))
+                        .field("temp_aux", int(ot_mgr.get_child_ips()[ip].temp_aux))
+                        .field("hum_main", float(ot_mgr.get_child_ips()[ip].hum_main))
+                        .field("ret", bool(ot_mgr.get_child_ips()[ip].ret))
+                        .field("state", int(ot_mgr.get_child_ips()[ip].state))
+                        .field("vdd", int(ot_mgr.get_child_ips()[ip].vdd))
+                        .field("alive", bool(alive))
                         .time(datetime.utcnow(), WritePrecision.MS)
                     )
                     # Write the data point to the database
