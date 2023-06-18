@@ -67,3 +67,28 @@ async def influx_task(ot_mgr: OtManager):
                     except Exception as err:
                         logging.error("Could not write to influxdb")
                         logging.error(err)
+
+                elif ot_mgr.get_child_ips()[ip].device_type == OtDeviceType.CO2:
+                    point = (
+                        Point("ot-co2sn")
+                        .tag("ip", ip)
+                        .field("co2", float(ot_mgr.get_child_ips()[ip].co2))
+                        .field("temp", int(ot_mgr.get_child_ips()[ip].temp))
+                        .field("hum", float(ot_mgr.get_child_ips()[ip].hum))
+                        .field("err", bool(ot_mgr.get_child_ips()[ip].error))
+                        .field("offset", int(ot_mgr.get_child_ips()[ip].offset))
+                        .field("age", int(ot_mgr.get_child_ips()[ip].age))
+                        .field("num", int(ot_mgr.get_child_ips()[ip].num))
+                        .field("vdd", int(ot_mgr.get_child_ips()[ip].vdd))
+                        .field("alive", bool(alive))
+                        .field("alive_ctr", int(ot_mgr.get_child_ips()[ip].ctr))
+                        .time(datetime.utcnow(), WritePrecision.MS)
+                    )
+                    # Write the data point to the database
+                    try:
+                        await client.write_api().write(bucket, org, point)
+                    except (OSError, TimeoutError):
+                        logging.error("Could not connect to influxdb")
+                    except Exception as err:
+                        logging.error("Could not write to influxdb")
+                        logging.error(err)

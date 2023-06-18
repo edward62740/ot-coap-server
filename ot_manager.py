@@ -18,11 +18,12 @@ from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
 OT_DEVICE_TIMEOUT_CYCLES = 5
 OT_DEVICE_CHILD_TIMEOUT_S = 190
 OT_DEVICE_CHILD_TIMEOUT_CYCLE_RATE = 1
-OT_DEVICE_POLL_INTERVAL_S = 15
+OT_DEVICE_POLL_INTERVAL_S = 5
 
 class OtDeviceType(enum.IntEnum):
     RADAR = 0
     HS = 1
+    CO2 = 2
     UNKNOWN = -255
 
 @dataclass
@@ -55,6 +56,18 @@ class OtHs(OtDevice):
     vdd: int = field(default=0)
     rssi: int = field(default=0)
 
+@dataclass
+class OtCo2sn(OtDevice):
+    co2: int = field(default=0)
+    temp: int = field(default=0)
+    hum: int = field(default=0)
+    error: int = field(default=0)
+    offset: int = field(default=0)
+    age: int = field(default=0)
+    num: int = field(default=0)
+    vdd: int = field(default=0)
+    rssi: int = field(default=0)
+
 
 class OtManager:
     """ This class manages the ot children and associated information.
@@ -82,14 +95,20 @@ class OtManager:
         def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
             info = zc.get_service_info(type_, name)
             logging.info(f"Service {name} added, service info: {info}")
-            ip = info._ipv6_addresses[0]
-            OtManager._pend_cb_dns_sd_new_ips.add(ip)
+            try:
+                ip = info._ipv6_addresses[0]
+                OtManager._pend_cb_dns_sd_new_ips.add(ip)
+            except Exception as e:
+                pass
 
         def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
             info = zc.get_service_info(type_, name)
             logging.info(f"Service {name} updated, service info: {info}")
-            ip = info._ipv6_addresses[0]
-            OtManager._pend_cb_dns_sd_new_ips.add(ip)
+            try:
+                ip = info._ipv6_addresses[0]
+                OtManager._pend_cb_dns_sd_new_ips.add(ip)
+            except Exception as e:
+                pass
         def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
             pass
 
@@ -189,6 +208,39 @@ class OtManager:
             logging.warning("Child " + str(ip) + " not found in sensitivity list")
             raise ValueError
 
+
+    def update_co2(self, ip: IPv6Address, csv: list):
+        """ Updates the radar sensitivity list with new information from the child """
+        try:
+            if not isinstance(self.child_ip6[ip], OtCo2sn):
+                self.child_ip6[ip] = OtCo2sn(device_type=OtDeviceType.CO2, eui64=csv[1])
+                self._update_co2_int(ip, csv)
+
+            else:
+                self._update_co2_int(ip, csv)
+            self.update_child_info(ip, time.time())
+
+        except KeyError:
+            logging.warning("Child " + str(ip) + " not found in sensitivity list")
+            raise ValueError
+
+    def _update_co2_int(self, ip: IPv6Address, csv: list):
+        if csv.__len__() == 5:
+            self.child_ip6[ip].vdd = csv[2]
+            self.child_ip6[ip].rssi = csv[3]
+            self.child_ip6[ip].ctr = csv[4]
+        elif csv.__len__() == 12:
+            self.child_ip6[ip].co2 = csv[3]
+            self.child_ip6[ip].error = csv[2]
+            self.child_ip6[ip].temp = csv[4]
+            self.child_ip6[ip].hum = csv[5]
+            self.child_ip6[ip].offset = csv[6]
+            self.child_ip6[ip].age = csv[7]
+            self.child_ip6[ip].num = csv[8]
+            self.child_ip6[ip].vdd = csv[9]
+            self.child_ip6[ip].rssi = csv[10]
+            self.child_ip6[ip].ctr = csv[11]
+
     def dequeue_child_ip(self):
         """ Returns a child IP from the res queue and removes it from the queue, if empty returns None """
         try:
@@ -242,6 +294,5 @@ class OtManager:
             except (KeyError, AttributeError):
                 logging.warning("Child " + str(ip) + " disappeared suddenly")
 
-        except aiocoap.error.ConRetransmitsExceeded:
+        except (aiocoap.error.ConRetransmitsExceeded, aiocoap.error.NetworkError):
             logging.warning("Child " + str(ip) + " not reachable")
-
