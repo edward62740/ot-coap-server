@@ -32,6 +32,8 @@ class ResourceHandler(resource.Resource):
         try:
             if csv[0] == "0": # if is radar
                 self.ot_mgr.update_radar(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)), csv)
+            elif csv[0] == "1": # if is HS
+                self.ot_mgr.update_hs(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)), csv)
         except ValueError:
             logging.warning("Invalid payload")
         user_handler_callback(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)), csv)

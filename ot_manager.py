@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 import logging
 import aiocoap
 from aiocoap import *
+from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
+
 
 OT_DEVICE_TIMEOUT_CYCLES = 5
 OT_DEVICE_CHILD_TIMEOUT_S = 190
@@ -45,7 +47,13 @@ class OtRadar(OtDevice):
 
 @dataclass
 class OtHs(OtDevice):
-    pass # NOT IMPLEMENTED YET
+    temp_main: int = field(default=0)
+    temp_aux: int = field(default=0)
+    hum_main: int = field(default=0)
+    ret: int = field(default=0)
+    state: int = field(default=0)
+    vdd: int = field(default=0)
+    rssi: int = field(default=0)
 
 
 class OtManager:
@@ -57,39 +65,74 @@ class OtManager:
     child_ip6 = dict[IPv6Address, OtDevice]() # Child IPv6 sensitivity list
     pend_queue_res_child_ips = set[IPv6Address]() # Queue for new children to be allocated a resource
     _pend_queue_notif_child_ips = set[IPv6Address]() # Queue for new children to be notified of their resource
+    _pend_cb_dns_sd_new_ips = set[IPv6Address]()
     self_ip6 = ipaddress.IPv6Address # CoAP server IPv6
-
-    def __init__(self, self_ip: IPv6Address):
+    _option_find_ips = 0
+    def __init__(self, self_ip: IPv6Address, option_find_ips = 0):
         self.self_ip6 = self_ip
+        if option_find_ips != 0:
+            self._option_find_ips = 1
+            zeroconf = Zeroconf()
+            listener = self.DnsSdListener()
+            browser = ServiceBrowser(zeroconf, "_ot._udp.local.", listener)
         logging.info("Registered self ip as " + str(self.self_ip6))
 
+    class DnsSdListener(ServiceListener):
+        """ Listener for DNS-SD services """
+        def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+            info = zc.get_service_info(type_, name)
+            logging.info(f"Service {name} added, service info: {info}")
+            ip = info._ipv6_addresses[0]
+            OtManager._pend_cb_dns_sd_new_ips.add(ip)
+
+        def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+            info = zc.get_service_info(type_, name)
+            logging.info(f"Service {name} updated, service info: {info}")
+            ip = info._ipv6_addresses[0]
+            OtManager._pend_cb_dns_sd_new_ips.add(ip)
+        def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+            pass
+
+
     def find_child_ips(self) -> None:
-        """ Checks from ot-ctl if there are new children and adds them to the sensitivity list """
-        process = subprocess.Popen(['ot-ctl', 'childip'],
-                                   stdout=subprocess.PIPE,
-                                   universal_newlines=True)
-        while True:
-            output = process.stdout.readlines()
-            lines = output
-            prefix = str(self.self_ip6)[:4]
-            for line in lines:
-                try:
-                    line = line.rstrip()
-                    if not line[6:].startswith(prefix):
-                        logging.info(line[6:].strip()  + " does not match mesh-local prefix " + prefix)
-                    else:
-                        tmp = ipaddress.ip_address(line[6:])
-                        if tmp not in self.child_ip6:
-                            self.pend_queue_res_child_ips.add(tmp)
-                            logging.info(line[6:].strip()  + " added to child notif queue")
-                            tmp_uri = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-                            self.child_ip6[tmp] = OtDevice(uri=tmp_uri)
-                            logging.info(line[6:].strip()  + " updated in child sensitivity list with resource " + tmp_uri)
-                except ValueError:
-                    pass
-            last = str(process.poll())
-            if last is not None:
-                break
+        if self._option_find_ips == 0:
+            """ Checks from ot-ctl if there are new children and adds them to the sensitivity list """
+            process = subprocess.Popen(['ot-ctl', 'childip'],
+                                       stdout=subprocess.PIPE,
+                                       universal_newlines=True)
+            while True:
+                output = process.stdout.readlines()
+                lines = output
+                prefix = str(self.self_ip6)[:4]
+                for line in lines:
+                    try:
+                        line = line.rstrip()
+                        if not line[6:].startswith(prefix):
+                            logging.info(line[6:].strip()  + " does not match mesh-local prefix " + prefix)
+                        else:
+                            tmp = ipaddress.ip_address(line[6:])
+                            if tmp not in self.child_ip6:
+                                self.pend_queue_res_child_ips.add(tmp)
+                                logging.info(line[6:].strip()  + " added to child notif queue")
+                                tmp_uri = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+                                self.child_ip6[tmp] = OtDevice(uri=tmp_uri)
+                                logging.info(line[6:].strip()  + " updated in child sensitivity list with resource " + tmp_uri)
+                    except ValueError:
+                        pass
+                last = str(process.poll())
+                if last is not None:
+                    break
+        else:
+            while len(self._pend_cb_dns_sd_new_ips) > 0:
+                ip = self._pend_cb_dns_sd_new_ips.pop()
+                if ip not in OtManager.child_ip6:
+                    OtManager.pend_queue_res_child_ips.add(ip)
+                    logging.info(str(ip) + " added to child notif queue")
+                    tmp_uri = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+                    OtManager.child_ip6[ip] = OtDevice(uri=tmp_uri)
+                    logging.info(str(ip) + " updated in child sensitivity list with resource " + tmp_uri)
+
+
 
     def get_child_ips(self):
         """ Returns a dict of all children in the sensitivity list """
@@ -121,6 +164,25 @@ class OtManager:
                 self.child_ip6[ip].vdd = csv[6]
                 self.child_ip6[ip].rssi = csv[7]
                 self.child_ip6[ip].ctr = csv[8]
+            self.update_child_info(ip, time.time())
+
+        except KeyError:
+            logging.warning("Child " + str(ip) + " not found in sensitivity list")
+            raise ValueError
+
+    def update_hs(self, ip: IPv6Address, csv: list):
+        """ Updates the radar sensitivity list with new information from the child """
+        try:
+            if not isinstance(self.child_ip6[ip], OtHs):
+                self.child_ip6[ip] = OtHs(device_type=OtDeviceType.HS, eui64=csv[1], temp_main=csv[2], hum_main=csv[3],
+                                             temp_aux=csv[4],ret=csv[5], state=csv[6], vdd=csv[7])
+            else:
+                self.child_ip6[ip].temp_main = csv[2]
+                self.child_ip6[ip].hum_main = csv[3]
+                self.child_ip6[ip].temp_aux = csv[4]
+                self.child_ip6[ip].ret = csv[5]
+                self.child_ip6[ip].state = csv[6]
+                self.child_ip6[ip].vdd = csv[7]
             self.update_child_info(ip, time.time())
 
         except KeyError:
@@ -169,6 +231,9 @@ class OtManager:
                 payload = str.encode(self.child_ip6[ip].uri)
             except KeyError:
                 logging.warning("Child " + str(ip) + " not found in sensitivity list")
+            except (OSError, aiocoap.error.NetworkError):
+                logging.warning("Network error")
+
             request = Message(code=GET, payload=payload, uri="coap://[" + str(ip) + "]/permissions")
             response = await context.request(request).response
             logging.info("Client responded with: " + str(response.payload))
