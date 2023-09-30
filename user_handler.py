@@ -1,9 +1,12 @@
 import logging
 from ipaddress import IPv6Address
 from numpy import interp
-
+import tinytuya
 
 from ot_manager import OtDeviceType
+from magichome import MagicHomeApi
+
+
 
 def user_handler_init():
     """ This function is called when the user handler is loaded. """

@@ -36,6 +36,8 @@ class ResourceHandler(resource.Resource):
                 self.ot_mgr.update_hs(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)), csv)
             elif csv[0] == "2": # if is CO2
                 self.ot_mgr.update_co2(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)), csv)
+            elif csv[0] == "254": # if is gassentinel
+                self.ot_mgr.update_gassentinel(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)), csv)
         except ValueError:
             logging.warning("Invalid payload")
         user_handler_callback(ipaddress.ip_address(re.sub(r"[\[\]]", "", client_ip)), csv)

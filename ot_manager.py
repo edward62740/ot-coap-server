@@ -24,6 +24,7 @@ class OtDeviceType(enum.IntEnum):
     RADAR = 0
     HS = 1
     CO2 = 2
+    GASSENTINEL = 254
     UNKNOWN = -255
 
 @dataclass
@@ -68,6 +69,17 @@ class OtCo2sn(OtDevice):
     vdd: int = field(default=0)
     rssi: int = field(default=0)
 
+@dataclass
+class GasSentinel(OtDevice):
+    iaq: int = field(default=0)
+    temp: int = field(default=0)
+    hum: int = field(default=0)
+    pres: int = field(default=0)
+    cl1: int = field(default=0)
+    cl2: int = field(default=0)
+    vdd: int = field(default=0)
+    rssi: int = field(default=0)
+
 
 class OtManager:
     """ This class manages the ot children and associated information.
@@ -104,6 +116,7 @@ class OtManager:
         def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
             info = zc.get_service_info(type_, name)
             logging.info(f"Service {name} updated, service info: {info}")
+            return
             try:
                 ip = info._ipv6_addresses[0]
                 OtManager._pend_cb_dns_sd_new_ips.add(ip)
@@ -165,6 +178,10 @@ class OtManager:
 
         except KeyError:
             logging.warning("Child " + str(ip) + " not found in sensitivity list")
+            try:
+                OtManager._pend_cb_dns_sd_new_ips.add(ip)
+            except Exception as e:
+                pass
             raise ValueError
 
     def update_radar(self, ip: IPv6Address, csv: list):
@@ -186,6 +203,10 @@ class OtManager:
             self.update_child_info(ip, time.time())
 
         except KeyError:
+            try:
+                OtManager._pend_cb_dns_sd_new_ips.add(ip)
+            except Exception as e:
+                pass
             logging.warning("Child " + str(ip) + " not found in sensitivity list")
             raise ValueError
 
@@ -205,6 +226,35 @@ class OtManager:
             self.update_child_info(ip, time.time())
 
         except KeyError:
+            try:
+                OtManager._pend_cb_dns_sd_new_ips.add(ip)
+            except Exception as e:
+                pass
+            logging.warning("Child " + str(ip) + " not found in sensitivity list")
+            raise ValueError
+
+
+    def update_gassentinel(self, ip: IPv6Address, csv: list):
+        """ Updates the radar sensitivity list with new information from the child """
+        try:
+            if not isinstance(self.child_ip6[ip], GasSentinel):
+                self.child_ip6[ip] = GasSentinel(device_type=OtDeviceType.GASSENTINEL, eui64=csv[1], iaq=csv[2], temp=csv[3], hum=csv[4], pres=csv[5], cl1=csv[6], cl2=csv[7], rssi=csv[8], vdd=csv[9])
+            else:
+                self.child_ip6[ip].iaq = csv[2]
+                self.child_ip6[ip].temp = csv[3]
+                self.child_ip6[ip].hum = csv[4]
+                self.child_ip6[ip].pres = csv[5]
+                self.child_ip6[ip].cl1 = csv[6]
+                self.child_ip6[ip].cl2 = csv[7]
+                self.child_ip6[ip].rssi = csv[8]
+                self.child_ip6[ip].vdd = csv[9]
+            self.update_child_info(ip, time.time())
+
+        except KeyError:
+            try:
+                OtManager._pend_cb_dns_sd_new_ips.add(ip)
+            except Exception as e:
+                pass
             logging.warning("Child " + str(ip) + " not found in sensitivity list")
             raise ValueError
 
@@ -221,6 +271,10 @@ class OtManager:
             self.update_child_info(ip, time.time())
 
         except KeyError:
+            try:
+                OtManager._pend_cb_dns_sd_new_ips.add(ip)
+            except Exception as e:
+                pass
             logging.warning("Child " + str(ip) + " not found in sensitivity list")
             raise ValueError
 
@@ -282,6 +336,10 @@ class OtManager:
             try:
                 payload = str.encode(self.child_ip6[ip].uri)
             except KeyError:
+                try:
+                    OtManager._pend_cb_dns_sd_new_ips.add(ip)
+                except Exception as e:
+                    pass
                 logging.warning("Child " + str(ip) + " not found in sensitivity list")
             except (OSError, aiocoap.error.NetworkError):
                 logging.warning("Network error")
