@@ -244,8 +244,11 @@ class OtManager:
                 self.child_ip6[ip].temp = csv[3]
                 self.child_ip6[ip].hum = csv[4]
                 self.child_ip6[ip].pres = csv[5]
-                self.child_ip6[ip].cl1 = csv[6]
-                self.child_ip6[ip].cl2 = csv[7]
+
+                if int(csv[6]) != 0 and int(csv[7]) != 0:
+                    self.child_ip6[ip].cl1 = csv[6]
+                    self.child_ip6[ip].cl2 = csv[7]
+
                 self.child_ip6[ip].rssi = csv[8]
                 self.child_ip6[ip].vdd = csv[9]
             self.update_child_info(ip, time.time())
